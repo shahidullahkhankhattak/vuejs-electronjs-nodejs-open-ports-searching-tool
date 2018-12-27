@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="./sementic-ui/semantic.min.css">
+    <link rel="stylesheet" href="./sementic-ui/semantic.min.js">
+    <title>Gui Image Scrapper</title>
+    <style>
+        @font-face {
+            font-family: console;
+            src: url(./sementic-ui/font.ttf);
+        }
+        .console{
+            font-family: console;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mainapp">
+        <div class="ui inverted teal segment">
+            <h2 class="ui center aligned icon header">
+                <i class="hubspot icon" style="display:inline;font-size:25px;"></i>
+                Ports Monitor
+            </h2>
+        </div>
+        <div class="main ui container" style="margin-top:15px;">
+            <div class="ui segment form">
+                <div class="ui two column very relaxed stackable grid">
+                    <div class="column">
+                        <h3 class="ui header blue">Brute Force</h3>
+                        <div class="field">
+                            <div class="two fields">
+                                <div class="field">
+                                    <label>Starting ip:port</label>
+                                    <input type="text" v-model="brute_force.starting_ip_port" name="startipport"
+                                        placeholder="starting ip:starting port">
+                                </div>
+                                <div class="field">
+                                    <label>Ending ip:port</label>
+                                    <input type="text" v-model="brute_force.ending_ip_port" name="endipport"
+                                        placeholder="ending ip:ending port">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <button v-if="brute_loading" class="ui button primary loading">Loading</button>
+                                <button v-else class="ui button primary" @click="bruteForce()">Submit</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="column">
+                        <h3 class="ui header green" style="color:#0c9c2e !important">Selective Ranges</h3>
+                        <div class="field">
+                            <div class="two fields">
+                                <div class="field">
+                                    <label>Starting ip:port</label>
+                                    <input type="text" v-model="selective_ranges.starting_ip_port" name="startipport"
+                                        placeholder="starting ip:starting port">
+                                </div>
+                                <div class="field">
+                                    <label>Ending ip:port</label>
+                                    <input type="text" v-model="selective_ranges.ending_ip_port" name="endipport"
+                                        placeholder="ending ip:ending port">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <button @click="add_selective_range()" class="ui mini green button">Add Range</button>
+                            </div>
+                            <div class="ui segment">
+                                <div v-for="range in selective_ranges.ranges"><input class="range_checkbox" style="margin-top:3px"
+                                        type="checkbox" :value="range" :id="range"> <label :for="range">{{range}}</label></div>
+                                <div v-if="selective_ranges.ranges.length > 0"><input type="checkbox" style="margin-top:3px"
+                                        id="selectall" @click="selectallranges()"> <label for="selectall">select all</label></div>
+                                <button v-if="selective_ranges.ranges.length > 0" class="ui red icon button mini"
+                                    @click="delete_selected_ranges()">
+                                    <i class="delete icon" style="font-size:13px;"></i> Delete Selected Range(s)
+                                </button>
+                            </div>
+                            <div class="field">
+                                <button v-if="selective_loading" class="ui button primary loading" style="background:#0c9c2e">Loading</button>
+                                <button v-else class="ui button primary" @click="selectiveRange()" style="background:#0c9c2e">Submit</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="ui vertical divider">
+                    Or
+                </div>
+            </div>
+            <form class="ui form" v-on:submit.prevent="">
+                <div class="ui horizontal divider">
+                    Or
+                </div>
+                <div class="ui segment">
+                    <h3 class="ui header orange">Bulk Search</h3>
+                    <div class="field">
+                        <label>Enter List Of Ip:Port</label>
+                        <textarea placeholder="192.168.8.1:0000" style="min-height:7em;height:7em;" v-model="bulk_search"></textarea>
+                    </div>
+
+                    <button v-if="bulk_loading" class="ui button orange loading">Loading</button>
+                    <button v-else class="ui button orange" @click="bulkSearch()">Submit</button>
+                    <button class="ui labeled icon button orange" @click="readFromTextFile()"><i class="file alternate icon"></i>
+                        Read From Text File</button>
+                    <button class="ui labeled icon button orange" @click="readFromExcelFile()"><i class="file excel icon"></i>
+                        Read From Excel File</button>
+                    <!-- <button class="ui button orange">Read From CSV File</button> -->
+                </div>
+            </form>
+        </div>
+        <div class="ui modal error-modal">
+            <div class="header" style="color:red;"><i class="exclamation triangle icon"></i>Wait !</div>
+            <div class="content">
+              <p>{{error}}</p>
+            </div>
+            <div class="actions">
+              <div class="ui approve button">Okay</div>
+            </div>
+          </div>
+    </div>
+</body>
+<script>if (typeof module === 'object') {window.module = module; module = undefined;}</script>
+<script type="text/javascript" src="./jquery.js"></script>
+<script type="text/javascript" src="./sementic-ui/semantic.min.js"></script>
+<script type="text/javascript" src="./vue.js"></script>
+<script type="text/javascript" src="./axios.js"></script>
+<script>if (window.module) module = window.module;</script>
+<script type="text/javascript">
+    const XLSX = require('xlsx');
+    const electron = require('electron');
+    const fs = require('fs');
+    const {
+        dialog
+    } = require('electron').remote;
+    const {
+        ipcRenderer
+    } = electron;
+    var vue = new Vue({
+        el: "#mainapp",
+        data: function () {
+            return {
+                error: "",
+                brute_loading: false,
+                selective_loading: false,
+                bulk_loading: false,
+                brute_force: {
+                    starting_ip_port: "",
+                    ending_ip_port: ""
+                },
+                selective_ranges: {
+                    starting_ip_port: "",
+                    ending_ip_port: "",
+                    ranges: [
+
+                    ]
+                },
+                bulk_search: "",
+                logs: []
+            }
+        },
+        methods: {
+            selectallranges: function () {
+                var checkboxes = document.querySelectorAll(".range_checkbox");
+                var selectall = document.querySelector("#selectall");
+                if (selectall.checked) {
+                    for (var i = 0; i < checkboxes.length; i++) {
+                        checkboxes[i].checked = true;
+                    }
+                } else {
+                    for (var i = 0; i < checkboxes.length; i++) {
+                        checkboxes[i].checked = false;
+                    }
+                }
+
+            },
+            delete_selected_ranges: function () {
+                var checkboxes = document.querySelectorAll(".range_checkbox:checked");
+                for (var i = 0; i < checkboxes.length; i++) {
+                    var range = checkboxes[i].value;
+                    this.selective_ranges.ranges.splice(this.selective_ranges.ranges.indexOf(range), 1);
+                }
+            },
+            generateHtml: function (ip, header, body) {
+                var headers = JSON.stringify(header).split('"').join("").split(",").join("<br>").split(":")
+                    .join(" : ").split("{").join("").split("}").join("");
+
+                var doc = document.createElement("div");
+                doc.innerHTML = body;
+
+                var title = doc.querySelector("title") ? doc.querySelector("title").innerHTML : '';
+                var footer = doc.querySelector("footer") ? doc.querySelector("footer").outerHTML : '';
+
+                return `<div align='center'>
+                            <h3>${ip}</h3>
+                            <hr>
+                            <h4>Headers</h4>
+                            <p>
+                                ${headers}
+                            </p>
+                            <h4>Title</h4>
+                            <p>
+                                ${title}
+                            </p>
+                            <h4>Footer</h4>
+                            <p>
+                                ${footer}
+                            </p>
+                        </div>
+                        <hr>`;
+            },
+            getTimeStamp: function () {
+                var today = new Date();
+                var date = today.getFullYear() + '-' + (today.getMonth() + 1) + '-' + today.getDate();
+                var time = today.getHours() + "-" + today.getMinutes() + "-" + today.getSeconds();
+                return date + '-' + time;
+            },
+            readFromTextFile: function () {
+                var _this = this;
+                dialog.showOpenDialog({
+                    properties: ['openFile'],
+                    filters: [{
+                            name: 'Text Files',
+                            extensions: ['txt', 'md']
+                        },
+                        {
+                            name: 'All Files',
+                            extensions: ['*']
+                        }
+                    ]
+                }, function (files) {
+                    if (files && files[0])
+                        fs.readFile(files[0], 'utf8', function (err, data) {
+                            if (err) throw err;
+                            _this.bulk_search = data;
+                        });
+                });
+            },
+            readFromExcelFile: function () {
+                var _this = this;
+                dialog.showOpenDialog({
+                    properties: ['openFile'],
+                    filters: [{
+                            name: 'Excel Files',
+                            extensions: ['xls', 'xlsx']
+                        },
+                        {
+                            name: 'All Files',
+                            extensions: ['*']
+                        }
+                    ]
+                }, function (files) {
+                    if (files && files[0]) {
+                        const file = XLSX.readFile(files[0]);
+                        var data = XLSX.utils.sheet_to_json(file.Sheets[file.SheetNames[0]]);
+                        console.log(data);
+                        for (var i = 0; i < data.length; i++) {
+                            _this.bulk_search += JSON.stringify(data[i]).split('"')[3] + "\n";
+                        }
+                    }
+                });
+            },
+            add_selective_range: function () {
+                if (this.selective_ranges.ranges.indexOf(this.selective_ranges.starting_ip_port + ' - ' +
+                        this.selective_ranges.ending_ip_port) == -1 &&
+                    this.selective_ranges.starting_ip_port != "" && this.selective_ranges.ending_ip_port !=
+                    ""
+                )
+                    this.selective_ranges.ranges.push(
+                        this.selective_ranges.starting_ip_port + ' - ' + this.selective_ranges.ending_ip_port
+                    );
+                this.selective_ranges.starting_ip_port = this.selective_ranges.ending_ip_port = "";
+            },
+            get_ip_range: function (starting_ip, ending_ip) {
+                var si = starting_ip.split(".");
+                var ei = ending_ip.split(".");
+                var ip_range = [];
+                for (i = si[0]; i <= ei[0]; i++) {
+                    for (var j = si[1]; j <= (i < ei[0] ? 255 : ei[1]); j++) {
+                        for (var k = si[2]; k <= ((i < ei[0] || j < ei[1]) ? 255 : ei[2]); k++) {
+                            for (var l = si[3]; l <= ((i < ei[0] || j < ei[1] || k < ei[2]) ? 255 : ei[3]); l++) {
+                                ip_range.push(i + "." + j + "." + k + "." + l);
+                            }
+                        }
+                    }
+                }
+                return ip_range.length > 0 ? ip_range : [starting_ip];
+            },
+            get_ip_port_range: function (start_ip_port, end_ip_port) {
+                var ip_range = this.get_ip_range(start_ip_port.split(":")[0], end_ip_port.split(":")[0]);
+                var start_port = start_ip_port.split(":")[1];
+                var end_port = end_ip_port.split(":")[1];
+                var addresses = [];
+                for (var i = 0; i < ip_range.length; i++) {
+                    addresses.push(ip_range[i]);
+                    for (var j = start_port; j <= end_port; j++) {
+                        addresses.push(ip_range[i] + ":" + j);
+                    }
+                }
+                return addresses;
+            },
+            bruteForce: function () {
+                if(this.error != ""){
+                    $(".error-modal").modal('show');
+                    return;
+                }
+                this.brute_loading = true;
+                var addresses = this.get_ip_port_range(this.brute_force.starting_ip_port, this.brute_force.ending_ip_port);
+                var _this = this;
+                if (!fs.existsSync("./data")) {
+                    fs.mkdir("./data", function (err) {});
+                }
+                var current_dir = "./data/" + this.getTimeStamp();
+                fs.mkdir(current_dir, function (err) {});
+
+                var current_file = 1;
+                var responses = [];
+                for (var i = 0; i < addresses.length; i++) {
+                    axios.get("http://" + addresses[i]).then(res => {
+                        var headers = res.headers;
+                        var body = res.data;
+                        responses.push(_this.generateHtml(res.request.responseURL, headers, body));
+                        fs.writeFileSync(current_dir + "/" + current_file + ".html", responses.join(
+                            "\n"));
+                        if (responses.length == 50) {
+                            current_file += 1;
+                            responses = [];
+                        }
+                    }).catch(err => {
+                        console.log(err);
+                    });
+                }
+                this.brute_loading = false;
+            },
+            selectiveRange: function () {
+                if(this.error != ""){
+                    $(".error-modal").modal('show');
+                    return;
+                }
+                this.selective_loading = true;
+                var addresses = [];
+                var selective_ranges = this.selective_ranges.ranges;
+                for (var i = 0; i < selective_ranges.length; i++) {
+                    addresses.push(...this.get_ip_port_range(selective_ranges[i].split(" - ")[0],
+                        selective_ranges[i].split(" - ")[1]));
+                }
+                var _this = this;
+                if (!fs.existsSync("./data")) {
+                    fs.mkdir("./data", function (err) {});
+                }
+                var current_dir = "./data/" + this.getTimeStamp();
+                fs.mkdir(current_dir, function (err) {});
+
+                var current_file = 1;
+                var responses = [];
+                for (var i = 0; i < addresses.length; i++) {
+                    axios.get("http://" + addresses[i]).then(res => {
+                        var headers = res.headers;
+                        var body = res.data;
+                        responses.push(_this.generateHtml(res.request.responseURL, headers, body));
+                        fs.writeFileSync(current_dir + "/" + current_file + ".html", responses.join(
+                            "\n"));
+                        if (responses.length == 50) {
+                            current_file += 1;
+                            responses = [];
+                        }
+                    }).catch(err => {
+                        console.log(err);
+                    });
+                }
+                this.selective_loading = false;
+            },
+            bulkSearch: function () {
+                if(this.error != ""){
+                    $(".error-modal").modal('show');
+                    return;
+                }
+                this.bulk_loading = true;
+                var addresses = this.bulk_search.split("\n");
+
+                var _this = this;
+                if (!fs.existsSync("./data")) {
+                    fs.mkdir("./data", function (err) {});
+                }
+                var current_dir = "./data/" + this.getTimeStamp();
+                fs.mkdir(current_dir, function (err) {});
+
+                var current_file = 1;
+                var responses = [];
+                for (var i = 0; i < addresses.length; i++) {
+                    axios.get("http://" + addresses[i]).then(res => {
+                        var headers = res.headers;
+                        var body = res.data;
+                        responses.push(_this.generateHtml(res.request.responseURL, headers, body));
+                        fs.writeFileSync(current_dir + "/" + current_file + ".html", responses.join(
+                            "\n"));
+                        if (responses.length == 50) {
+                            current_file += 1;
+                            responses = [];
+                        }
+                    }).catch(err => {
+                        console.log(err);
+                    });
+                }
+                this.bulk_loading = false;
+            }
+        },
+        mounted: function () {
+            var _this = this;
+            $("input[type='text']").on('blur', function(){
+                value = $(this).val();
+                var ip_port_validator = /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]):[0-9]+$/g;
+                if(value != "" && !ip_port_validator.test(value)){
+                    _this.error = "Please, enter correct IP & Port in the feild.";
+                    if(!$("body").hasClass("dimmed"))
+                        $(".error-modal").modal('show');
+                    $(this).focus();
+                }else{
+                    _this.error = "";
+                }
+            });
+            ipcRenderer.on("console", function (e, data) {});
+        }
+    })
+</script>
+
+</html>
