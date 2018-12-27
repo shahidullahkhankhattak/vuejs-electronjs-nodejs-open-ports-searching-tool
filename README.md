@@ -15,3 +15,14 @@ this tool combines the power of nodejs, electron and vuejs + axios to search for
  #### bulk search
   this gives you the option of importing ip:port list from an excel file, csv file, or text file
   and will perform bruteforce on that speciffic list and will save header & footer information of each ip:port that's found opened & valid.
+
+## requirements
+* nodejs
+* npm
+
+## method for running
+* clone the repo
+* run cmd or terminal in that specific folder
+* run npm install
+* after npm installation is compelete. run npm start
+* enjoy 
